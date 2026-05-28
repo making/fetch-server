@@ -6,6 +6,8 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
+import java.time.InstantSource;
 import java.util.List;
 import java.util.Map;
 
@@ -20,6 +22,10 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.context.TestConfiguration;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Import;
+import org.springframework.context.annotation.Primary;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.client.RestTestClient;
@@ -32,7 +38,23 @@ import org.springframework.test.web.servlet.client.RestTestClient;
  */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureRestTestClient
+@Import(FetchServerIntegrationTest.FixedClockConfig.class)
 class FetchServerIntegrationTest {
+
+	/**
+	 * Pins the {@link InstantSource} to a fixed instant so the {@code current_datetime}
+	 * tool produces a deterministic value that can be asserted in full.
+	 */
+	@TestConfiguration(proxyBeanMethods = false)
+	static class FixedClockConfig {
+
+		@Bean
+		@Primary
+		InstantSource fixedInstantSource() {
+			return InstantSource.fixed(Instant.parse("2026-05-29T05:30:00Z"));
+		}
+
+	}
 
 	private static final ObjectMapper MAPPER = new ObjectMapper();
 
@@ -68,7 +90,17 @@ class FetchServerIntegrationTest {
 			.map(JsonNode::asText)
 			.sorted()
 			.toList();
-		assertThat(toolNames).containsExactly("fetch");
+		assertThat(toolNames).containsExactly("current_datetime", "fetch");
+	}
+
+	@Test
+	void shouldReturnCurrentDatetimeInRequestedTimezone() throws Exception {
+		String sessionId = initializeSession();
+		confirmInitialized(sessionId);
+
+		JsonNode payload = callTool(sessionId, "current_datetime", Map.of("timezone", "Asia/Tokyo"));
+
+		assertThat(payload.path("dateTime").asText()).isEqualTo("2026-05-29T14:30:00+09:00");
 	}
 
 	@Test

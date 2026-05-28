@@ -16,7 +16,8 @@ import org.springframework.context.annotation.ImportRuntimeHints;
  */
 @Configuration(proxyBeanMethods = false)
 @ImportRuntimeHints(NativeConfig.NativeRuntimeHints.class)
-@RegisterReflectionForBinding({ WebFetchService.FetchResponse.class, WebFetchService.FetchResult.class })
+@RegisterReflectionForBinding({ WebFetchService.FetchResponse.class, WebFetchService.FetchResult.class,
+		CurrentTimeService.CurrentTimeResponse.class })
 public class NativeConfig {
 
 	/**

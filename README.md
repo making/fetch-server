@@ -1,12 +1,15 @@
 # fetch-server
 
-An MCP (Model Context Protocol) server that exposes a single `fetch` tool for
-retrieving web resources over HTTP.
+An MCP (Model Context Protocol) server that exposes tools for retrieving web
+resources over HTTP and for reading the current date-time.
 
 - `fetch` — fetch one or more URLs in a single call. By default each HTML body
   is converted to Markdown; set `markdown` to `false` to receive the raw
   response body instead. URLs are fetched concurrently and the results are
   returned together, one entry per URL.
+- `current_datetime` — return the current date-time as an ISO-8601 string with
+  an offset. Pass an IANA `timezone` (e.g. `Asia/Tokyo`) to convert it; when
+  omitted, the server's default timezone is used.
 
 Use this server when an MCP client (Claude Desktop, custom agents, etc.) needs
 to read web pages or call HTTP APIs as part of its workflow. The server speaks
@@ -36,7 +39,7 @@ Built with Spring Boot 4 + Spring AI 2.0. Supports GraalVM native image.
 
 The server listens on port `8090` by default (override with `PORT`).
 
-## Tool Parameters
+## `fetch` Parameters
 
 | name             | type                   | required | default |
 |------------------|------------------------|----------|---------|
@@ -48,7 +51,7 @@ The server listens on port `8090` by default (override with `PORT`).
 
 `headers`, `timeoutSeconds`, and `maxBytes` apply to every URL in the call.
 
-## Response
+## `fetch` Response
 
 The tool returns a `results` array with one entry per requested URL, in the same
 order as `urls`:
@@ -65,6 +68,21 @@ order as `urls`:
 
 A failure of one URL does not abort the others; only that entry carries an
 `error`.
+
+## `current_datetime` Parameters
+
+| name       | type   | required | default          |
+|------------|--------|----------|------------------|
+| `timezone` | string | no       | server's default |
+
+`timezone` is an IANA zone ID such as `Asia/Tokyo` or `America/New_York`. An
+unknown value results in an error response.
+
+## `current_datetime` Response
+
+| field      | type   | description                                                  |
+|------------|--------|--------------------------------------------------------------|
+| `dateTime` | string | current date-time, ISO-8601 with offset (e.g. `2026-05-29T14:30:00+09:00`) |
 
 ## Testing with curl
 
@@ -184,6 +202,27 @@ curl -X POST http://localhost:8090/mcp \
         "headers": {"User-Agent": "fetch-server/0.0.1", "X-Trace-Id": "demo"},
         "timeoutSeconds": 5
       }
+    }
+  }'
+```
+
+### Call `current_datetime`
+
+Omit `arguments` (or pass an empty object) to use the server's default timezone,
+or pass a `timezone` to convert it.
+
+```sh
+curl -X POST http://localhost:8090/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json,text/event-stream" \
+  -H "Mcp-Session-Id: $SESSION_ID" \
+  -d '{
+    "jsonrpc": "2.0",
+    "id": 7,
+    "method": "tools/call",
+    "params": {
+      "name": "current_datetime",
+      "arguments": {"timezone": "Asia/Tokyo"}
     }
   }'
 ```
