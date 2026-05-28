@@ -6,12 +6,10 @@ import java.net.http.HttpClient;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
-import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
+import java.util.concurrent.CompletableFuture;
 
 import com.vladsch.flexmark.html2md.converter.FlexmarkHtmlConverter;
 import com.vladsch.flexmark.util.data.MutableDataSet;
@@ -91,29 +89,11 @@ public class WebFetchService {
 		boolean asMarkdown = (markdown == null) || markdown;
 		FetchContext context = new FetchContext(buildClient(effectiveTimeout), asMarkdown, headers, effectiveMaxBytes);
 
-		List<Future<FetchResult>> futures = new ArrayList<>(urls.size());
-		for (String url : urls) {
-			futures.add(this.taskExecutor.submit(() -> fetchOne(context, url)));
-		}
-
-		List<FetchResult> results = new ArrayList<>(urls.size());
-		for (int i = 0; i < urls.size(); i++) {
-			results.add(awaitResult(futures.get(i), urls.get(i)));
-		}
-		return new FetchResponse(results);
-	}
-
-	private static FetchResult awaitResult(Future<FetchResult> future, String url) {
-		try {
-			return future.get();
-		}
-		catch (InterruptedException ex) {
-			Thread.currentThread().interrupt();
-			return errorResult(url, ex);
-		}
-		catch (ExecutionException ex) {
-			return errorResult(url, (ex.getCause() != null) ? ex.getCause() : ex);
-		}
+		// Submit every URL first so they run concurrently, then join in input order.
+		List<CompletableFuture<FetchResult>> futures = urls.stream()
+			.map(url -> this.taskExecutor.submitCompletable(() -> fetchOne(context, url)))
+			.toList();
+		return new FetchResponse(futures.stream().map(CompletableFuture::join).toList());
 	}
 
 	private FetchResult fetchOne(FetchContext context, String url) {
