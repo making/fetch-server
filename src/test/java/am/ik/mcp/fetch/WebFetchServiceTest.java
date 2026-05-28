@@ -8,6 +8,7 @@ import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.util.Map;
 
 import com.sun.net.httpserver.HttpHandler;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import org.springframework.util.unit.DataSize;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
@@ -32,7 +34,8 @@ class WebFetchServiceTest {
 		this.server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
 		this.server.start();
 		this.baseUrl = "http://127.0.0.1:" + this.server.getAddress().getPort();
-		this.service = new WebFetchService(RestClient.builder());
+		this.service = new WebFetchService(RestClient.builder(),
+				new WebFetchProperties(Duration.ofSeconds(30), DataSize.ofMegabytes(1)));
 	}
 
 	@AfterEach

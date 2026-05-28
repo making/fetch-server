@@ -43,7 +43,7 @@ Both tools share the same input schema:
 | `url`            | string                | yes      | —           |
 | `headers`        | object (string→string)| no       | none        |
 | `timeoutSeconds` | integer               | no       | `30`        |
-| `maxBytes`       | integer               | no       | `1,000,000` |
+| `maxBytes`       | integer               | no       | `1 MB`      |
 
 Responses include a `truncated` flag that is `true` when the body exceeded
 `maxBytes`.

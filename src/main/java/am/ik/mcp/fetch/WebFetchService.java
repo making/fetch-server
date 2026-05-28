@@ -30,18 +30,17 @@ import org.springframework.web.client.RestClient;
 @Service
 public class WebFetchService {
 
-	private static final int DEFAULT_TIMEOUT_SECONDS = 30;
-
-	private static final int DEFAULT_MAX_BYTES = 1_000_000;
-
 	private final RestClient.Builder builder;
+
+	private final WebFetchProperties properties;
 
 	private final FlexmarkHtmlConverter htmlToMarkdown = FlexmarkHtmlConverter
 		.builder(new MutableDataSet().set(FlexmarkHtmlConverter.SETEXT_HEADINGS, false))
 		.build();
 
-	public WebFetchService(RestClient.Builder builder) {
+	public WebFetchService(RestClient.Builder builder, WebFetchProperties properties) {
 		this.builder = builder;
+		this.properties = properties;
 	}
 
 	public record FetchResponse(int status, String contentType, String body, boolean truncated) {
@@ -76,11 +75,13 @@ public class WebFetchService {
 	}
 
 	private FetchResponse doFetch(FetchOptions options) {
-		int effectiveTimeout = (options.timeoutSeconds() != null) ? options.timeoutSeconds() : DEFAULT_TIMEOUT_SECONDS;
-		int effectiveMaxBytes = (options.maxBytes() != null) ? options.maxBytes() : DEFAULT_MAX_BYTES;
-		HttpClient httpClient = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(effectiveTimeout)).build();
+		Duration effectiveTimeout = (options.timeoutSeconds() != null) ? Duration.ofSeconds(options.timeoutSeconds())
+				: this.properties.defaultTimeout();
+		int effectiveMaxBytes = (options.maxBytes() != null) ? options.maxBytes()
+				: Math.toIntExact(this.properties.defaultMaxSize().toBytes());
+		HttpClient httpClient = HttpClient.newBuilder().connectTimeout(effectiveTimeout).build();
 		JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
-		factory.setReadTimeout(Duration.ofSeconds(effectiveTimeout));
+		factory.setReadTimeout(effectiveTimeout);
 		RestClient client = this.builder.clone().requestFactory(factory).build();
 		return client.get()
 			.uri(URI.create(options.url()))
