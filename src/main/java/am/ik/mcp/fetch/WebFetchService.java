@@ -14,7 +14,6 @@ import com.vladsch.flexmark.util.data.MutableDataSet;
 import org.jspecify.annotations.Nullable;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
-import org.jsoup.nodes.Element;
 
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -26,7 +25,7 @@ import org.springframework.web.client.RestClient;
 
 /**
  * MCP tool service that fetches arbitrary URLs over HTTP and optionally converts HTML
- * responses into plain text or Markdown.
+ * responses into Markdown.
  */
 @Service
 public class WebFetchService {
@@ -48,9 +47,6 @@ public class WebFetchService {
 	public record FetchResponse(int status, String contentType, String body, boolean truncated) {
 	}
 
-	public record TextResponse(int status, String title, String text, boolean truncated) {
-	}
-
 	public record MarkdownResponse(int status, String title, String markdown, boolean truncated) {
 	}
 
@@ -63,21 +59,6 @@ public class WebFetchService {
 			@ToolParam(description = "Optional maximum body size in bytes (default 1,000,000)",
 					required = false) @Nullable Integer maxBytes) {
 		return doFetch(new FetchOptions(url, headers, timeoutSeconds, maxBytes));
-	}
-
-	@McpTool(name = "fetch-as-text", description = "Fetch a URL and extract plain text from its HTML body")
-	public TextResponse fetchAsText(@ToolParam(description = "Target URL") String url,
-			@ToolParam(description = "Optional HTTP request headers",
-					required = false) @Nullable Map<String, String> headers,
-			@ToolParam(description = "Optional request timeout in seconds (default 30)",
-					required = false) @Nullable Integer timeoutSeconds,
-			@ToolParam(description = "Optional maximum body size in bytes (default 1,000,000)",
-					required = false) @Nullable Integer maxBytes) {
-		FetchResponse raw = doFetch(new FetchOptions(url, headers, timeoutSeconds, maxBytes));
-		Document doc = Jsoup.parse(raw.body(), url);
-		Element bodyElement = doc.body();
-		String text = (bodyElement != null) ? bodyElement.text() : doc.text();
-		return new TextResponse(raw.status(), doc.title(), text, raw.truncated());
 	}
 
 	@McpTool(name = "fetch-as-markdown", description = "Fetch a URL and convert its HTML body into Markdown")

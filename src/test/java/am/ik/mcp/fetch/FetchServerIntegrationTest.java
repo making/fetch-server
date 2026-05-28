@@ -56,14 +56,14 @@ class FetchServerIntegrationTest {
 	}
 
 	@Test
-	void shouldListAllThreeTools() throws Exception {
+	void shouldListAllTools() throws Exception {
 		String sessionId = initializeSession();
 		confirmInitialized(sessionId);
 
 		JsonNode result = callRpc(sessionId, "tools/list", null);
 
 		List<String> toolNames = result.path("tools").findValues("name").stream().map(JsonNode::asText).sorted().toList();
-		assertThat(toolNames).containsExactly("fetch", "fetch-as-markdown", "fetch-as-text");
+		assertThat(toolNames).containsExactly("fetch", "fetch-as-markdown");
 	}
 
 	@Test
@@ -80,30 +80,6 @@ class FetchServerIntegrationTest {
 		assertThat(payload.path("truncated").asBoolean()).isFalse();
 		assertThat(payload.path("body").asText()).isEqualToNormalizingWhitespace("""
 				Hello from mock
-				""");
-	}
-
-	@Test
-	void shouldExtractPlainTextFromHtml() throws Exception {
-		registerHandler("/page", htmlHandler("""
-				<html>
-				  <head><title>Sample</title></head>
-				  <body>
-				    <h1>Heading</h1>
-				    <p>Hello world</p>
-				  </body>
-				</html>
-				"""));
-
-		String sessionId = initializeSession();
-		confirmInitialized(sessionId);
-
-		JsonNode payload = callTool(sessionId, "fetch-as-text", Map.of("url", this.mockBaseUrl + "/page"));
-
-		assertThat(payload.path("status").asInt()).isEqualTo(200);
-		assertThat(payload.path("title").asText()).isEqualTo("Sample");
-		assertThat(payload.path("text").asText()).isEqualToNormalizingWhitespace("""
-				Heading Hello world
 				""");
 	}
 

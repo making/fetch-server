@@ -1,10 +1,9 @@
 # fetch-server
 
-An MCP (Model Context Protocol) server that exposes three tools for fetching web
+An MCP (Model Context Protocol) server that exposes two tools for fetching web
 resources over HTTP:
 
 - `fetch` — fetch a URL and return the raw response body
-- `fetch-as-text` — fetch a URL and extract plain text from the HTML body
 - `fetch-as-markdown` — fetch a URL and convert the HTML body to Markdown
 
 Use this server when an MCP client (Claude Desktop, custom agents, etc.) needs
@@ -37,7 +36,7 @@ The server listens on port `8090` by default (override with `PORT`).
 
 ## Tool Parameters
 
-All three tools share the same input schema:
+Both tools share the same input schema:
 
 | name             | type                  | required | default     |
 |------------------|-----------------------|----------|-------------|
@@ -127,7 +126,7 @@ curl -X POST http://localhost:8090/mcp \
   }'
 ```
 
-### 5. Call `fetch-as-text`
+### 5. Call `fetch-as-markdown`
 
 ```sh
 curl -X POST http://localhost:8090/mcp \
@@ -137,24 +136,6 @@ curl -X POST http://localhost:8090/mcp \
   -d '{
     "jsonrpc": "2.0",
     "id": 4,
-    "method": "tools/call",
-    "params": {
-      "name": "fetch-as-text",
-      "arguments": {"url": "https://example.com"}
-    }
-  }'
-```
-
-### 6. Call `fetch-as-markdown`
-
-```sh
-curl -X POST http://localhost:8090/mcp \
-  -H "Content-Type: application/json" \
-  -H "Accept: application/json,text/event-stream" \
-  -H "Mcp-Session-Id: $SESSION_ID" \
-  -d '{
-    "jsonrpc": "2.0",
-    "id": 5,
     "method": "tools/call",
     "params": {
       "name": "fetch-as-markdown",
@@ -220,5 +201,5 @@ curl -s -X POST "$BASE" \
 ```
 
 The unit tests spin up an in-process `com.sun.net.httpserver.HttpServer` and
-exercise the three tools end-to-end, including header propagation, timeout,
+exercise the tools end-to-end, including header propagation, timeout,
 truncation, and charset decoding.

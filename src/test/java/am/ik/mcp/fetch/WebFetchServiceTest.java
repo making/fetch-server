@@ -138,28 +138,6 @@ class WebFetchServiceTest {
 	}
 
 	@Test
-	void shouldExtractPlainTextFromHtml() {
-		String html = """
-				<html>
-				  <head><title>Sample</title></head>
-				  <body>
-				    <h1>Heading</h1>
-				    <p>Hello world</p>
-				  </body>
-				</html>
-				""";
-		registerHandler("/page", htmlHandler(html));
-
-		WebFetchService.TextResponse response = this.service.fetchAsText(this.baseUrl + "/page", null, null, null);
-
-		assertThat(response.status()).isEqualTo(200);
-		assertThat(response.title()).isEqualTo("Sample");
-		assertThat(response.text()).isEqualToNormalizingWhitespace("""
-				Heading Hello world
-				""");
-	}
-
-	@Test
 	void shouldConvertHtmlToMarkdown() {
 		String html = """
 				<html>
