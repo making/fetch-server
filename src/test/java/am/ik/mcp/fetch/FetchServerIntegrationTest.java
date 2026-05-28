@@ -62,8 +62,13 @@ class FetchServerIntegrationTest {
 
 		JsonNode result = callRpc(sessionId, "tools/list", null);
 
-		List<String> toolNames = result.path("tools").findValues("name").stream().map(JsonNode::asText).sorted().toList();
-		assertThat(toolNames).containsExactly("fetch", "fetch-as-markdown");
+		List<String> toolNames = result.path("tools")
+			.findValues("name")
+			.stream()
+			.map(JsonNode::asText)
+			.sorted()
+			.toList();
+		assertThat(toolNames).containsExactly("fetch");
 	}
 
 	@Test
@@ -73,12 +78,14 @@ class FetchServerIntegrationTest {
 		String sessionId = initializeSession();
 		confirmInitialized(sessionId);
 
-		JsonNode payload = callTool(sessionId, "fetch", Map.of("url", this.mockBaseUrl + "/hello"));
+		JsonNode payload = callTool(sessionId, "fetch",
+				Map.of("urls", List.of(this.mockBaseUrl + "/hello"), "markdown", false));
+		JsonNode result = payload.path("results").get(0);
 
-		assertThat(payload.path("status").asInt()).isEqualTo(200);
-		assertThat(payload.path("contentType").asText()).startsWith("text/plain");
-		assertThat(payload.path("truncated").asBoolean()).isFalse();
-		assertThat(payload.path("body").asText()).isEqualToNormalizingWhitespace("""
+		assertThat(result.path("status").asInt()).isEqualTo(200);
+		assertThat(result.path("contentType").asText()).startsWith("text/plain");
+		assertThat(result.path("truncated").asBoolean()).isFalse();
+		assertThat(result.path("content").asText()).isEqualToNormalizingWhitespace("""
 				Hello from mock
 				""");
 	}
@@ -98,11 +105,13 @@ class FetchServerIntegrationTest {
 		String sessionId = initializeSession();
 		confirmInitialized(sessionId);
 
-		JsonNode payload = callTool(sessionId, "fetch-as-markdown", Map.of("url", this.mockBaseUrl + "/page"));
+		JsonNode payload = callTool(sessionId, "fetch",
+				Map.of("urls", List.of(this.mockBaseUrl + "/page"), "markdown", true));
+		JsonNode result = payload.path("results").get(0);
 
-		assertThat(payload.path("status").asInt()).isEqualTo(200);
-		assertThat(payload.path("title").asText()).isEqualTo("Sample");
-		assertThat(payload.path("markdown").asText()).isEqualToNormalizingWhitespace("""
+		assertThat(result.path("status").asInt()).isEqualTo(200);
+		assertThat(result.path("title").asText()).isEqualTo("Sample");
+		assertThat(result.path("content").asText()).isEqualToNormalizingWhitespace("""
 				# Heading
 
 				Hello world
@@ -124,10 +133,10 @@ class FetchServerIntegrationTest {
 		String sessionId = initializeSession();
 		confirmInitialized(sessionId);
 
-		JsonNode payload = callTool(sessionId, "fetch", Map.of("url", this.mockBaseUrl + "/echo", "headers",
-				Map.of("X-Trace-Id", "demo-trace")));
+		JsonNode payload = callTool(sessionId, "fetch", Map.of("urls", List.of(this.mockBaseUrl + "/echo"), "markdown",
+				false, "headers", Map.of("X-Trace-Id", "demo-trace")));
 
-		assertThat(payload.path("body").asText()).isEqualToNormalizingWhitespace("""
+		assertThat(payload.path("results").get(0).path("content").asText()).isEqualToNormalizingWhitespace("""
 				demo-trace
 				""");
 	}

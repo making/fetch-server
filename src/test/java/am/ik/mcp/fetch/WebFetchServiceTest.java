@@ -1,14 +1,16 @@
 package am.ik.mcp.fetch;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
+import java.net.ServerSocket;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.List;
 import java.util.Map;
 
 import com.sun.net.httpserver.HttpHandler;
@@ -17,8 +19,8 @@ import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import org.springframework.core.task.SimpleAsyncTaskExecutor;
 import org.springframework.util.unit.DataSize;
-import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 
 class WebFetchServiceTest {
@@ -34,8 +36,10 @@ class WebFetchServiceTest {
 		this.server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
 		this.server.start();
 		this.baseUrl = "http://127.0.0.1:" + this.server.getAddress().getPort();
+		SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor();
+		executor.setVirtualThreads(true);
 		this.service = new WebFetchService(RestClient.builder(),
-				new WebFetchProperties(Duration.ofSeconds(30), DataSize.ofMegabytes(1)));
+				new WebFetchProperties(Duration.ofSeconds(30), DataSize.ofMegabytes(1)), executor);
 	}
 
 	@AfterEach
@@ -47,12 +51,13 @@ class WebFetchServiceTest {
 	void shouldReturnRawBodyForOkResponse() {
 		registerHandler("/hello", textHandler("Hello, world", StandardCharsets.UTF_8, 200));
 
-		WebFetchService.FetchResponse response = this.service.fetch(this.baseUrl + "/hello", null, null, null);
+		WebFetchService.FetchResult result = fetchOne(this.baseUrl + "/hello", false);
 
-		assertThat(response.status()).isEqualTo(200);
-		assertThat(response.contentType()).startsWith("text/plain");
-		assertThat(response.truncated()).isFalse();
-		assertThat(response.body()).isEqualToNormalizingWhitespace("""
+		assertThat(result.status()).isEqualTo(200);
+		assertThat(result.contentType()).startsWith("text/plain");
+		assertThat(result.truncated()).isFalse();
+		assertThat(result.error()).isNull();
+		assertThat(result.content()).isEqualToNormalizingWhitespace("""
 				Hello, world
 				""");
 	}
@@ -61,10 +66,10 @@ class WebFetchServiceTest {
 	void shouldPropagateNon200StatusCode() {
 		registerHandler("/missing", textHandler("not found", StandardCharsets.UTF_8, 404));
 
-		WebFetchService.FetchResponse response = this.service.fetch(this.baseUrl + "/missing", null, null, null);
+		WebFetchService.FetchResult result = fetchOne(this.baseUrl + "/missing", false);
 
-		assertThat(response.status()).isEqualTo(404);
-		assertThat(response.body()).isEqualToNormalizingWhitespace("""
+		assertThat(result.status()).isEqualTo(404);
+		assertThat(result.content()).isEqualToNormalizingWhitespace("""
 				not found
 				""");
 	}
@@ -74,10 +79,12 @@ class WebFetchServiceTest {
 		String hundredBytes = "x".repeat(100);
 		registerHandler("/big", textHandler(hundredBytes, StandardCharsets.UTF_8, 200));
 
-		WebFetchService.FetchResponse response = this.service.fetch(this.baseUrl + "/big", null, null, 20);
+		WebFetchService.FetchResponse response = this.service.fetch(List.of(this.baseUrl + "/big"), false, null, null,
+				20);
+		WebFetchService.FetchResult result = response.results().get(0);
 
-		assertThat(response.truncated()).isTrue();
-		assertThat(response.body()).hasSize(20).isEqualTo("x".repeat(20));
+		assertThat(result.truncated()).isTrue();
+		assertThat(result.content()).hasSize(20).isEqualTo("x".repeat(20));
 	}
 
 	@Test
@@ -92,16 +99,16 @@ class WebFetchServiceTest {
 			}
 		});
 
-		WebFetchService.FetchResponse response = this.service.fetch(this.baseUrl + "/echo",
+		WebFetchService.FetchResponse response = this.service.fetch(List.of(this.baseUrl + "/echo"), false,
 				Map.of("X-Test-Header", "abc123"), null, null);
 
-		assertThat(response.body()).isEqualToNormalizingWhitespace("""
+		assertThat(response.results().get(0).content()).isEqualToNormalizingWhitespace("""
 				abc123
 				""");
 	}
 
 	@Test
-	void shouldRespectTimeout() {
+	void shouldReturnErrorResultWhenTimeoutExceeded() {
 		registerHandler("/slow", exchange -> {
 			try {
 				Thread.sleep(2000);
@@ -117,8 +124,13 @@ class WebFetchServiceTest {
 			}
 		});
 
-		assertThatThrownBy(() -> this.service.fetch(this.baseUrl + "/slow", null, 1, null))
-			.isInstanceOf(ResourceAccessException.class);
+		WebFetchService.FetchResponse response = this.service.fetch(List.of(this.baseUrl + "/slow"), false, null, 1,
+				null);
+		WebFetchService.FetchResult result = response.results().get(0);
+
+		assertThat(result.status()).isZero();
+		assertThat(result.error()).isNotNull();
+		assertThat(result.content()).isEmpty();
 	}
 
 	@Test
@@ -133,16 +145,16 @@ class WebFetchServiceTest {
 			}
 		});
 
-		WebFetchService.FetchResponse response = this.service.fetch(this.baseUrl + "/sjis", null, null, null);
+		WebFetchService.FetchResult result = fetchOne(this.baseUrl + "/sjis", false);
 
-		assertThat(response.body()).isEqualToNormalizingWhitespace("""
+		assertThat(result.content()).isEqualToNormalizingWhitespace("""
 				こんにちは
 				""");
 	}
 
 	@Test
-	void shouldConvertHtmlToMarkdown() {
-		String html = """
+	void shouldConvertHtmlToMarkdownByDefault() {
+		registerHandler("/page", htmlHandler("""
 				<html>
 				  <head><title>Sample</title></head>
 				  <body>
@@ -150,15 +162,15 @@ class WebFetchServiceTest {
 				    <p>Hello world</p>
 				  </body>
 				</html>
-				""";
-		registerHandler("/page", htmlHandler(html));
+				"""));
 
-		WebFetchService.MarkdownResponse response = this.service.fetchAsMarkdown(this.baseUrl + "/page", null, null,
+		WebFetchService.FetchResponse response = this.service.fetch(List.of(this.baseUrl + "/page"), null, null, null,
 				null);
+		WebFetchService.FetchResult result = response.results().get(0);
 
-		assertThat(response.status()).isEqualTo(200);
-		assertThat(response.title()).isEqualTo("Sample");
-		assertThat(response.markdown()).isEqualToNormalizingWhitespace("""
+		assertThat(result.status()).isEqualTo(200);
+		assertThat(result.title()).isEqualTo("Sample");
+		assertThat(result.content()).isEqualToNormalizingWhitespace("""
 				# Heading
 
 				Hello world
@@ -166,20 +178,72 @@ class WebFetchServiceTest {
 	}
 
 	@Test
+	void shouldFetchMultipleUrlsPreservingOrder() {
+		registerHandler("/one", textHandler("first", StandardCharsets.UTF_8, 200));
+		registerHandler("/two", textHandler("second", StandardCharsets.UTF_8, 200));
+
+		WebFetchService.FetchResponse response = this.service
+			.fetch(List.of(this.baseUrl + "/one", this.baseUrl + "/two"), false, null, null, null);
+
+		assertThat(response.results()).hasSize(2);
+		assertThat(response.results().get(0).url()).endsWith("/one");
+		assertThat(response.results().get(0).content()).isEqualToNormalizingWhitespace("""
+				first
+				""");
+		assertThat(response.results().get(1).url()).endsWith("/two");
+		assertThat(response.results().get(1).content()).isEqualToNormalizingWhitespace("""
+				second
+				""");
+	}
+
+	@Test
+	void shouldReturnPartialResultsWhenOneUrlFails() throws IOException {
+		registerHandler("/ok", textHandler("ok", StandardCharsets.UTF_8, 200));
+		String unreachableUrl = reserveClosedPortUrl() + "/down";
+
+		WebFetchService.FetchResponse response = this.service.fetch(List.of(this.baseUrl + "/ok", unreachableUrl),
+				false, null, null, null);
+
+		assertThat(response.results()).hasSize(2);
+		WebFetchService.FetchResult ok = response.results().get(0);
+		assertThat(ok.status()).isEqualTo(200);
+		assertThat(ok.error()).isNull();
+		assertThat(ok.content()).isEqualToNormalizingWhitespace("""
+				ok
+				""");
+		WebFetchService.FetchResult failed = response.results().get(1);
+		assertThat(failed.url()).isEqualTo(unreachableUrl);
+		assertThat(failed.status()).isZero();
+		assertThat(failed.error()).isNotNull();
+	}
+
+	@Test
 	void shouldUseDefaultsWhenOptionalParamsAreNull() {
 		registerHandler("/default", textHandler("ok", StandardCharsets.UTF_8, 200));
 
-		WebFetchService.FetchResponse response = this.service.fetch(this.baseUrl + "/default", null, null, null);
+		WebFetchService.FetchResult result = fetchOne(this.baseUrl + "/default", false);
 
-		assertThat(response.status()).isEqualTo(200);
-		assertThat(response.truncated()).isFalse();
-		assertThat(response.body()).isEqualToNormalizingWhitespace("""
+		assertThat(result.status()).isEqualTo(200);
+		assertThat(result.truncated()).isFalse();
+		assertThat(result.content()).isEqualToNormalizingWhitespace("""
 				ok
 				""");
 	}
 
+	private WebFetchService.FetchResult fetchOne(String url, boolean markdown) {
+		return this.service.fetch(List.of(url), markdown, null, null, null).results().get(0);
+	}
+
 	private void registerHandler(String path, HttpHandler handler) {
 		this.server.createContext(path, handler);
+	}
+
+	private static String reserveClosedPortUrl() throws IOException {
+		// Bind then immediately release a loopback port so a later connection is refused
+		// fast, rather than stalling until the read timeout.
+		try (ServerSocket socket = new ServerSocket(0, 0, InetAddress.getLoopbackAddress())) {
+			return "http://127.0.0.1:" + socket.getLocalPort();
+		}
 	}
 
 	private static HttpHandler textHandler(String body, Charset charset, int status) {

@@ -1,10 +1,12 @@
 # fetch-server
 
-An MCP (Model Context Protocol) server that exposes two tools for fetching web
-resources over HTTP:
+An MCP (Model Context Protocol) server that exposes a single `fetch` tool for
+retrieving web resources over HTTP.
 
-- `fetch` — fetch a URL and return the raw response body
-- `fetch-as-markdown` — fetch a URL and convert the HTML body to Markdown
+- `fetch` — fetch one or more URLs in a single call. By default each HTML body
+  is converted to Markdown; set `markdown` to `false` to receive the raw
+  response body instead. URLs are fetched concurrently and the results are
+  returned together, one entry per URL.
 
 Use this server when an MCP client (Claude Desktop, custom agents, etc.) needs
 to read web pages or call HTTP APIs as part of its workflow. The server speaks
@@ -36,17 +38,33 @@ The server listens on port `8090` by default (override with `PORT`).
 
 ## Tool Parameters
 
-Both tools share the same input schema:
+| name             | type                   | required | default |
+|------------------|------------------------|----------|---------|
+| `urls`           | string array           | yes      | —       |
+| `markdown`       | boolean                | no       | `true`  |
+| `headers`        | object (string→string) | no       | none    |
+| `timeoutSeconds` | integer                | no       | `30`    |
+| `maxBytes`       | integer                | no       | `1 MB`  |
 
-| name             | type                  | required | default     |
-|------------------|-----------------------|----------|-------------|
-| `url`            | string                | yes      | —           |
-| `headers`        | object (string→string)| no       | none        |
-| `timeoutSeconds` | integer               | no       | `30`        |
-| `maxBytes`       | integer               | no       | `1 MB`      |
+`headers`, `timeoutSeconds`, and `maxBytes` apply to every URL in the call.
 
-Responses include a `truncated` flag that is `true` when the body exceeded
-`maxBytes`.
+## Response
+
+The tool returns a `results` array with one entry per requested URL, in the same
+order as `urls`:
+
+| field         | type    | description                                                      |
+|---------------|---------|------------------------------------------------------------------|
+| `url`         | string  | the requested URL                                                |
+| `status`      | integer | HTTP status code, or `0` when the request failed                 |
+| `contentType` | string  | response `Content-Type` (empty when absent or on failure)        |
+| `title`       | string  | HTML document title; `null` when `markdown` is `false`           |
+| `content`     | string  | Markdown when `markdown` is `true`, otherwise the raw body       |
+| `truncated`   | boolean | `true` when the body exceeded `maxBytes`                         |
+| `error`       | string  | failure message when this URL could not be fetched, else `null`  |
+
+A failure of one URL does not abort the others; only that entry carries an
+`error`.
 
 ## Testing with curl
 
@@ -105,7 +123,7 @@ curl -X POST http://localhost:8090/mcp \
   -d '{"jsonrpc": "2.0", "id": 2, "method": "tools/list"}'
 ```
 
-### 4. Call `fetch`
+### 4. Call `fetch` (Markdown by default)
 
 ```sh
 curl -X POST http://localhost:8090/mcp \
@@ -118,15 +136,15 @@ curl -X POST http://localhost:8090/mcp \
     "method": "tools/call",
     "params": {
       "name": "fetch",
-      "arguments": {
-        "url": "https://example.com",
-        "maxBytes": 200
-      }
+      "arguments": {"urls": ["https://example.com"]}
     }
   }'
 ```
 
-### 5. Call `fetch-as-markdown`
+### 5. Fetch multiple URLs and return the raw body
+
+Pass several URLs in `urls`, and set `markdown` to `false` to skip the Markdown
+conversion. The response `results` array preserves the input order.
 
 ```sh
 curl -X POST http://localhost:8090/mcp \
@@ -138,8 +156,12 @@ curl -X POST http://localhost:8090/mcp \
     "id": 4,
     "method": "tools/call",
     "params": {
-      "name": "fetch-as-markdown",
-      "arguments": {"url": "https://example.com"}
+      "name": "fetch",
+      "arguments": {
+        "urls": ["https://example.com", "https://example.org"],
+        "markdown": false,
+        "maxBytes": 200
+      }
     }
   }'
 ```
@@ -158,7 +180,7 @@ curl -X POST http://localhost:8090/mcp \
     "params": {
       "name": "fetch",
       "arguments": {
-        "url": "https://httpbin.org/headers",
+        "urls": ["https://httpbin.org/headers"],
         "headers": {"User-Agent": "fetch-server/0.0.1", "X-Trace-Id": "demo"},
         "timeoutSeconds": 5
       }
@@ -191,7 +213,7 @@ curl -s -X POST "$BASE" \
   -H "Content-Type: application/json" \
   -H "Accept: application/json,text/event-stream" \
   -H "Mcp-Session-Id: $SESSION_ID" \
-  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"fetch-as-markdown","arguments":{"url":"https://example.com"}}}'
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"fetch","arguments":{"urls":["https://example.com"]}}}'
 ```
 
 ## Tests

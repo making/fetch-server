@@ -6,8 +6,12 @@ import java.net.http.HttpClient;
 import java.nio.charset.Charset;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
 
 import com.vladsch.flexmark.html2md.converter.FlexmarkHtmlConverter;
 import com.vladsch.flexmark.util.data.MutableDataSet;
@@ -17,6 +21,8 @@ import org.jsoup.nodes.Document;
 
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.tool.annotation.ToolParam;
+import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.JdkClientHttpRequestFactory;
@@ -24,8 +30,10 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 
 /**
- * MCP tool service that fetches arbitrary URLs over HTTP and optionally converts HTML
- * responses into Markdown.
+ * MCP tool service that fetches one or more URLs over HTTP, optionally converting HTML
+ * responses into Markdown. URLs in a single call are fetched concurrently on the
+ * Spring-managed task executor (virtual threads when enabled), and a failure of one URL
+ * does not abort the others.
  */
 @Service
 public class WebFetchService {
@@ -34,71 +42,122 @@ public class WebFetchService {
 
 	private final WebFetchProperties properties;
 
+	private final AsyncTaskExecutor taskExecutor;
+
 	private final FlexmarkHtmlConverter htmlToMarkdown = FlexmarkHtmlConverter
 		.builder(new MutableDataSet().set(FlexmarkHtmlConverter.SETEXT_HEADINGS, false))
 		.build();
 
-	public WebFetchService(RestClient.Builder builder, WebFetchProperties properties) {
+	public WebFetchService(RestClient.Builder builder, WebFetchProperties properties,
+			@Qualifier("applicationTaskExecutor") AsyncTaskExecutor taskExecutor) {
 		this.builder = builder;
 		this.properties = properties;
+		this.taskExecutor = taskExecutor;
 	}
 
-	public record FetchResponse(int status, String contentType, String body, boolean truncated) {
+	/**
+	 * Result of fetching a single URL. When {@code markdown} is requested, {@code title}
+	 * holds the HTML document title and {@code content} holds the Markdown rendering;
+	 * otherwise {@code title} is {@code null} and {@code content} holds the raw body.
+	 * When the fetch fails, {@code status} is {@code 0}, {@code content} is empty, and
+	 * {@code error} carries the failure message.
+	 */
+	public record FetchResult(String url, int status, String contentType, @Nullable String title, String content,
+			boolean truncated, @Nullable String error) {
 	}
 
-	public record MarkdownResponse(int status, String title, String markdown, boolean truncated) {
+	/**
+	 * Aggregated response holding one {@link FetchResult} per requested URL, in the same
+	 * order as the input.
+	 */
+	public record FetchResponse(List<FetchResult> results) {
 	}
 
-	@McpTool(name = "fetch", description = "Fetch a URL via HTTP GET and return the raw response body")
-	public FetchResponse fetch(@ToolParam(description = "Target URL") String url,
+	@McpTool(name = "fetch",
+			description = "Fetch one or more URLs via HTTP GET, optionally converting HTML bodies to Markdown")
+	public FetchResponse fetch(@ToolParam(description = "Target URLs to fetch") List<String> urls,
+			@ToolParam(description = "Convert HTML body to Markdown (default true)",
+					required = false) @Nullable Boolean markdown,
 			@ToolParam(description = "Optional HTTP request headers",
 					required = false) @Nullable Map<String, String> headers,
 			@ToolParam(description = "Optional request timeout in seconds (default 30)",
 					required = false) @Nullable Integer timeoutSeconds,
-			@ToolParam(description = "Optional maximum body size in bytes (default 1,000,000)",
+			@ToolParam(description = "Optional maximum body size in bytes per URL (default 1,000,000)",
 					required = false) @Nullable Integer maxBytes) {
-		return doFetch(new FetchOptions(url, headers, timeoutSeconds, maxBytes));
-	}
-
-	@McpTool(name = "fetch-as-markdown", description = "Fetch a URL and convert its HTML body into Markdown")
-	public MarkdownResponse fetchAsMarkdown(@ToolParam(description = "Target URL") String url,
-			@ToolParam(description = "Optional HTTP request headers",
-					required = false) @Nullable Map<String, String> headers,
-			@ToolParam(description = "Optional request timeout in seconds (default 30)",
-					required = false) @Nullable Integer timeoutSeconds,
-			@ToolParam(description = "Optional maximum body size in bytes (default 1,000,000)",
-					required = false) @Nullable Integer maxBytes) {
-		FetchResponse raw = doFetch(new FetchOptions(url, headers, timeoutSeconds, maxBytes));
-		Document doc = Jsoup.parse(raw.body(), url);
-		String markdown = htmlToMarkdown.convert(raw.body());
-		return new MarkdownResponse(raw.status(), doc.title(), markdown, raw.truncated());
-	}
-
-	private FetchResponse doFetch(FetchOptions options) {
-		Duration effectiveTimeout = (options.timeoutSeconds() != null) ? Duration.ofSeconds(options.timeoutSeconds())
+		Duration effectiveTimeout = (timeoutSeconds != null) ? Duration.ofSeconds(timeoutSeconds)
 				: this.properties.defaultTimeout();
-		int effectiveMaxBytes = (options.maxBytes() != null) ? options.maxBytes()
+		int effectiveMaxBytes = (maxBytes != null) ? maxBytes
 				: Math.toIntExact(this.properties.defaultMaxSize().toBytes());
-		HttpClient httpClient = HttpClient.newBuilder().connectTimeout(effectiveTimeout).build();
+		boolean asMarkdown = (markdown == null) || markdown;
+		FetchContext context = new FetchContext(buildClient(effectiveTimeout), asMarkdown, headers, effectiveMaxBytes);
+
+		List<Future<FetchResult>> futures = new ArrayList<>(urls.size());
+		for (String url : urls) {
+			futures.add(this.taskExecutor.submit(() -> fetchOne(context, url)));
+		}
+
+		List<FetchResult> results = new ArrayList<>(urls.size());
+		for (int i = 0; i < urls.size(); i++) {
+			results.add(awaitResult(futures.get(i), urls.get(i)));
+		}
+		return new FetchResponse(results);
+	}
+
+	private static FetchResult awaitResult(Future<FetchResult> future, String url) {
+		try {
+			return future.get();
+		}
+		catch (InterruptedException ex) {
+			Thread.currentThread().interrupt();
+			return errorResult(url, ex);
+		}
+		catch (ExecutionException ex) {
+			return errorResult(url, (ex.getCause() != null) ? ex.getCause() : ex);
+		}
+	}
+
+	private FetchResult fetchOne(FetchContext context, String url) {
+		try {
+			return context.client()
+				.get()
+				.uri(URI.create(url))
+				.headers(httpHeaders -> applyHeaders(httpHeaders, context.headers()))
+				.exchange((request, response) -> {
+					// Read one extra byte to detect truncation reliably.
+					try (InputStream in = response.getBody()) {
+						byte[] readBytes = in.readNBytes(context.maxBytes() + 1);
+						boolean truncated = readBytes.length > context.maxBytes();
+						byte[] bodyBytes = truncated ? Arrays.copyOf(readBytes, context.maxBytes()) : readBytes;
+						String contentType = response.getHeaders().getFirst(HttpHeaders.CONTENT_TYPE);
+						String body = new String(bodyBytes, resolveCharset(contentType));
+						int status = response.getStatusCode().value();
+						String resolvedContentType = (contentType != null) ? contentType : "";
+						if (context.markdown()) {
+							Document doc = Jsoup.parse(body, url);
+							String rendered = this.htmlToMarkdown.convert(body);
+							return new FetchResult(url, status, resolvedContentType, doc.title(), rendered, truncated,
+									null);
+						}
+						return new FetchResult(url, status, resolvedContentType, null, body, truncated, null);
+					}
+				}, true);
+		}
+		catch (Exception ex) {
+			return errorResult(url, ex);
+		}
+	}
+
+	private RestClient buildClient(Duration timeout) {
+		HttpClient httpClient = HttpClient.newBuilder().connectTimeout(timeout).build();
 		JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
-		factory.setReadTimeout(effectiveTimeout);
-		RestClient client = this.builder.clone().requestFactory(factory).build();
-		return client.get()
-			.uri(URI.create(options.url()))
-			.headers(httpHeaders -> applyHeaders(httpHeaders, options.headers()))
-			.exchange((request, response) -> {
-				// Read one extra byte to detect truncation reliably.
-				try (InputStream in = response.getBody()) {
-					byte[] readBytes = in.readNBytes(effectiveMaxBytes + 1);
-					boolean truncated = readBytes.length > effectiveMaxBytes;
-					byte[] bodyBytes = truncated ? Arrays.copyOf(readBytes, effectiveMaxBytes) : readBytes;
-					String contentType = response.getHeaders().getFirst(HttpHeaders.CONTENT_TYPE);
-					Charset charset = resolveCharset(contentType);
-					String body = new String(bodyBytes, charset);
-					return new FetchResponse(response.getStatusCode().value(), (contentType != null) ? contentType : "",
-							body, truncated);
-				}
-			}, true);
+		factory.setReadTimeout(timeout);
+		return this.builder.clone().requestFactory(factory).build();
+	}
+
+	private static FetchResult errorResult(String url, Throwable ex) {
+		String message = ex.getMessage();
+		String error = (message != null && !message.isBlank()) ? message : ex.getClass().getSimpleName();
+		return new FetchResult(url, 0, "", null, "", false, error);
 	}
 
 	private static void applyHeaders(HttpHeaders target, @Nullable Map<String, String> source) {
@@ -122,8 +181,8 @@ public class WebFetchService {
 		}
 	}
 
-	private record FetchOptions(String url, @Nullable Map<String, String> headers, @Nullable Integer timeoutSeconds,
-			@Nullable Integer maxBytes) {
+	private record FetchContext(RestClient client, boolean markdown, @Nullable Map<String, String> headers,
+			int maxBytes) {
 	}
 
 }
