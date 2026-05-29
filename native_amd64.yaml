@@ -1,8 +1,8 @@
-image: ghcr.io/making/fetch-server@sha256:6de0482e5249cc794c6ff69fc84fb3bc1c7ef3c2af7f4d75981504b1442709a5
-git_revision: 4d05349afaf55d92d60c18974518635a9370abf6
+image: ghcr.io/making/fetch-server@sha256:83045c5352c3f2eb04f5d974c25b2450be68eb96cfcacfc737b80b9b88d1295f
+git_revision: 1ac29713624c0072c36b9f44db7d97dc07e2fbbe
 deployment:
   image:
     repository: ghcr.io/making/fetch-server
-    digest: sha256:6de0482e5249cc794c6ff69fc84fb3bc1c7ef3c2af7f4d75981504b1442709a5
+    digest: sha256:83045c5352c3f2eb04f5d974c25b2450be68eb96cfcacfc737b80b9b88d1295f
   podLabels:
-    github.com/revision: 4d05349afaf55d92d60c18974518635a9370abf6
+    github.com/revision: 1ac29713624c0072c36b9f44db7d97dc07e2fbbe
