@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>fetch · inspector — MCP tool result viewer</title>
+	<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230a0c0b'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='20' font-weight='700' text-anchor='middle' fill='%23c6ff3a'%3E/%3C/text%3E%3C/svg%3E">
+	<link rel="preconnect" href="https://fonts.googleapis.com">
+	<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+	<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+	<link rel="stylesheet" href="/app.css">
+	<script src="/htmx.min.js" defer></script>
+</head>
+<body>
+	<header>
+		<div class="brand">
+			<span class="eyebrow"><span class="dot"></span> model context protocol</span>
+			<h1>fetch<span class="slash">/</span>inspector</h1>
+			<p class="tagline">Exercise the <code>fetch</code> MCP tool and inspect the exact result an MCP client receives.</p>
+		</div>
+		<div class="server-chip">streamable http · <b>POST /mcp</b></div>
+	</header>
+
+	<main>
+		<section class="panel form-panel">
+			<h2 class="panel-title">Request</h2>
+			<form hx-post="/playground" hx-target="#results" hx-swap="innerHTML"
+				  hx-indicator="#spinner" hx-disabled-elt="find button">
+				<div class="field">
+					<label for="urls">URLs <span class="hint">— one per line</span></label>
+					<textarea id="urls" name="urls" rows="3" spellcheck="false"
+							  placeholder="https://example.com">{{sampleUrls}}</textarea>
+				</div>
+
+				<div class="field">
+					<label class="toggle">
+						<input type="checkbox" name="markdown" value="true" checked>
+						<span class="toggle-text">
+							<b>Convert HTML to Markdown</b>
+							<small>off = raw response body</small>
+						</span>
+					</label>
+				</div>
+
+				<div class="field">
+					<label for="headers">Headers <span class="hint">— Name: Value per line</span></label>
+					<textarea id="headers" name="headers" rows="2" spellcheck="false"
+							  placeholder="User-Agent: fetch-server&#10;X-Trace-Id: demo"></textarea>
+				</div>
+
+				<div class="field row">
+					<div>
+						<label for="timeoutSeconds">Timeout <span class="hint">(s)</span></label>
+						<input type="number" id="timeoutSeconds" name="timeoutSeconds" min="1" placeholder="30">
+					</div>
+					<div>
+						<label for="maxBytes">Max bytes</label>
+						<input type="number" id="maxBytes" name="maxBytes" min="1" placeholder="1000000">
+					</div>
+				</div>
+
+				<button type="submit" class="run">Run fetch</button>
+			</form>
+		</section>
+
+		<section class="panel result-panel">
+			<div class="result-head">
+				<h2>Result</h2>
+				<span id="spinner" class="spinner htmx-indicator"><i></i> fetching</span>
+			</div>
+			<div id="results" aria-live="polite">
+				<div class="empty-state">
+					<span class="glyph">{ }</span>
+					<p>Run a fetch to see the tool result here.</p>
+				</div>
+			</div>
+		</section>
+	</main>
+
+	<footer>
+		fetch-server · Spring Boot 4 + Spring AI 2.0 · <a href="/actuator/health">health</a>
+	</footer>
+
+	<script>
+		document.body.addEventListener('click', function (e) {
+			const btn = e.target.closest('[data-copy]');
+			if (!btn) return;
+			const pre = btn.closest('.card, .raw').querySelector('pre.content');
+			if (!pre || !navigator.clipboard) return;
+			navigator.clipboard.writeText(pre.innerText).then(function () {
+				const prev = btn.textContent;
+				btn.textContent = 'copied';
+				setTimeout(function () { btn.textContent = prev; }, 1200);
+			});
+		});
+	</script>
+</body>
+</html>

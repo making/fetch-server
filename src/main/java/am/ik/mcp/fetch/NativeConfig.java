@@ -17,7 +17,7 @@ import org.springframework.context.annotation.ImportRuntimeHints;
 @Configuration(proxyBeanMethods = false)
 @ImportRuntimeHints(NativeConfig.NativeRuntimeHints.class)
 @RegisterReflectionForBinding({ WebFetchService.FetchResponse.class, WebFetchService.FetchResult.class,
-		CurrentTimeService.CurrentTimeResponse.class })
+		CurrentTimeService.CurrentTimeResponse.class, am.ik.mcp.fetch.web.PlaygroundController.ResultView.class })
 public class NativeConfig {
 
 	/**
@@ -75,6 +75,9 @@ public class NativeConfig {
 
 		@Override
 		public void registerHints(RuntimeHints hints, @Nullable ClassLoader classLoader) {
+			// Mustache templates are loaded as classpath resources at runtime.
+			hints.resources().registerPattern("templates/*.mustache");
+			hints.resources().registerPattern("templates/fragments/*.mustache");
 			for (String type : FLEXMARK_ENUMS) {
 				hints.reflection()
 					.registerType(TypeReference.of(type), MemberCategory.ACCESS_PUBLIC_FIELDS,

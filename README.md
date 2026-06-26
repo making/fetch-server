@@ -17,6 +17,19 @@ the MCP Streamable HTTP transport on `POST /mcp`.
 
 Built with Spring Boot 4 + Spring AI 2.0. Supports GraalVM native image.
 
+## Web playground
+
+The server also serves a browser UI at `/` for trying the `fetch` tool by hand
+and inspecting the exact result an MCP client would receive. Enter one or more
+URLs, toggle Markdown conversion, optionally set headers / timeout / max bytes,
+and run the call. Each URL is shown as a card with its status, content type,
+title, size, and `truncated` flag, followed by the returned content; the full
+`FetchResponse` is also shown as raw JSON.
+
+The page is rendered server-side with Mustache, and the result panel is updated
+in place with [htmx](https://htmx.org/) (`POST /playground`). Open
+`http://localhost:8090/` after starting the server.
+
 ## Requirements
 
 - JDK 25 (GraalVM CE 25 if you want to build a native image)

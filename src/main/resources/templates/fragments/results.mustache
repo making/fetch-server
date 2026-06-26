@@ -1,0 +1,51 @@
+{{#error}}
+<div class="alert" role="alert"><span class="alert-mark">!</span>{{error}}</div>
+{{/error}}
+{{#count}}
+<div class="result-summary">
+	<span class="badge-count">{{count}}</span>
+	{{#plural}}results{{/plural}}{{^plural}}result{{/plural}} ·
+	mode <code>{{#markdown}}markdown{{/markdown}}{{^markdown}}raw{{/markdown}}</code>
+</div>
+<ol class="result-list">
+	{{#results}}
+	<li class="card status-{{statusClass}}">
+		<div class="card-top">
+			<span class="status-badge">{{statusLabel}}</span>
+			<a class="card-url" href="{{url}}" target="_blank" rel="noreferrer noopener">{{url}}</a>
+		</div>
+		<dl class="meta">
+			<div>
+				<dt>content-type</dt>
+				<dd>{{#contentType}}{{contentType}}{{/contentType}}{{^contentType}}—{{/contentType}}</dd>
+			</div>
+			<div>
+				<dt>title</dt>
+				<dd>{{#title}}{{title}}{{/title}}{{^title}}—{{/title}}</dd>
+			</div>
+			<div>
+				<dt>size</dt>
+				<dd>{{size}}</dd>
+			</div>
+			<div>
+				<dt>truncated</dt>
+				<dd>{{#truncated}}yes{{/truncated}}{{^truncated}}no{{/truncated}}</dd>
+			</div>
+		</dl>
+		{{#error}}<div class="card-error">{{error}}</div>{{/error}}
+		{{^empty}}
+		<div class="content-head"><span>content</span><button type="button" class="copy" data-copy>copy</button></div>
+		<pre class="content"><code>{{content}}</code></pre>
+		{{/empty}}
+		{{#empty}}{{^error}}<p class="content-empty">(empty body)</p>{{/error}}{{/empty}}
+	</li>
+	{{/results}}
+</ol>
+<details class="raw">
+	<summary>raw tool result — JSON</summary>
+	<div class="raw-body">
+		<div class="content-head"><span>FetchResponse</span><button type="button" class="copy" data-copy>copy</button></div>
+		<pre class="content"><code>{{rawJson}}</code></pre>
+	</div>
+</details>
+{{/count}}

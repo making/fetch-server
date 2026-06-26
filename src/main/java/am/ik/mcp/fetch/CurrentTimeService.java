@@ -14,8 +14,8 @@ import org.springframework.stereotype.Service;
 
 /**
  * MCP tool service that returns the current date-time. The timezone can be supplied as an
- * IANA zone ID; when omitted, the server's default timezone is used. The rendered value is
- * ISO-8601 with an offset, so the zone can be inferred from the offset alone.
+ * IANA zone ID; when omitted, the server's default timezone is used. The rendered value
+ * is ISO-8601 with an offset, so the zone can be inferred from the offset alone.
  */
 @Service
 public class CurrentTimeService {
