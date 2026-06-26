@@ -6,6 +6,7 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.nio.charset.StandardCharsets;
+import java.util.Base64;
 
 import com.sun.net.httpserver.HttpHandler;
 import com.sun.net.httpserver.HttpServer;
@@ -16,6 +17,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.resttestclient.autoconfigure.AutoConfigureRestTestClient;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.client.RestTestClient;
 
@@ -27,6 +29,10 @@ import org.springframework.test.web.servlet.client.RestTestClient;
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.RANDOM_PORT)
 @AutoConfigureRestTestClient
 class PlaygroundControllerTest {
+
+	// Matches the defaults in application.properties (admin / fetch-server).
+	private static final String BASIC_AUTH = "Basic "
+			+ Base64.getEncoder().encodeToString("admin:fetch-server".getBytes(StandardCharsets.UTF_8));
 
 	@Autowired
 	private RestTestClient client;
@@ -87,9 +93,41 @@ class PlaygroundControllerTest {
 		assertThat(html).contains("alert").contains("at least one URL");
 	}
 
+	@Test
+	void shouldChallengeWhenCredentialsMissing() {
+		this.client.get()
+			.uri("/")
+			.exchange()
+			.expectStatus()
+			.isUnauthorized()
+			.expectHeader()
+			.value(HttpHeaders.WWW_AUTHENTICATE, value -> assertThat(value).startsWith("Basic realm="));
+	}
+
+	@Test
+	void shouldRejectWrongCredentials() {
+		String wrong = "Basic " + Base64.getEncoder().encodeToString("admin:nope".getBytes(StandardCharsets.UTF_8));
+		this.client.get().uri("/").header(HttpHeaders.AUTHORIZATION, wrong).exchange().expectStatus().isUnauthorized();
+	}
+
+	@Test
+	void shouldLeaveMcpEndpointOpen() {
+		// The interceptor guards only the playground routes; /mcp must not receive the
+		// Basic-auth challenge even when called without credentials.
+		this.client.post()
+			.uri("/mcp")
+			.contentType(MediaType.APPLICATION_JSON)
+			.accept(MediaType.APPLICATION_JSON, MediaType.TEXT_EVENT_STREAM)
+			.body("{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"ping\"}")
+			.exchange()
+			.expectHeader()
+			.doesNotExist(HttpHeaders.WWW_AUTHENTICATE);
+	}
+
 	private String getBody(String uri) {
 		String body = this.client.get()
 			.uri(uri)
+			.header(HttpHeaders.AUTHORIZATION, BASIC_AUTH)
 			.exchange()
 			.expectStatus()
 			.isOk()
@@ -103,6 +141,7 @@ class PlaygroundControllerTest {
 	private String postForm(String formBody) {
 		String body = this.client.post()
 			.uri("/playground")
+			.header(HttpHeaders.AUTHORIZATION, BASIC_AUTH)
 			.contentType(MediaType.APPLICATION_FORM_URLENCODED)
 			.body(formBody)
 			.exchange()
