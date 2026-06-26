@@ -49,6 +49,30 @@
             <version>0.4.0</version>
         </dependency>
         <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-opentelemetry</artifactId>
+            <exclusions>
+                <exclusion>
+                    <groupId>io.opentelemetry</groupId>
+                    <artifactId>opentelemetry-exporter-sender-okhttp</artifactId>
+                </exclusion>
+            </exclusions>
+        </dependency>
+        <dependency>
+            <groupId>io.opentelemetry</groupId>
+            <artifactId>opentelemetry-exporter-sender-jdk</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>am.ik.spring.opentelemetry</groupId>
+            <artifactId>otel-logs-autoconfigure-logback</artifactId>
+            <version>0.6.0</version>
+        </dependency>
+        <dependency>
             <groupId>org.jsoup</groupId>
             <artifactId>jsoup</artifactId>
             <version>1.18.3</version>
@@ -117,6 +141,14 @@
                         <goals>
                             <goal>process-aot</goal>
                         </goals>
+                        <configuration>
+                            <!-- @formatter:off -->
+                            <systemPropertyVariables>
+                                <management.logging.export.enabled>true</management.logging.export.enabled>
+                                <management.opentelemetry.logging.export.otlp.endpoint>http://localhost:4318/v1/logs</management.opentelemetry.logging.export.otlp.endpoint>
+                            </systemPropertyVariables>
+                            <!-- @formatter:on -->
+                        </configuration>
                     </execution>
                 </executions>
                 <configuration>
