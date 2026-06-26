@@ -16,6 +16,8 @@ import com.vladsch.flexmark.util.data.MutableDataSet;
 import org.jspecify.annotations.Nullable;
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.tool.annotation.ToolParam;
@@ -35,6 +37,8 @@ import org.springframework.web.client.RestClient;
  */
 @Service
 public class WebFetchService {
+
+	private static final Logger logger = LoggerFactory.getLogger(WebFetchService.class);
 
 	private final RestClient.Builder builder;
 
@@ -97,6 +101,12 @@ public class WebFetchService {
 	}
 
 	private FetchResult fetchOne(FetchContext context, String url) {
+		// Write the body itself in logfmt so it is visible with the default console pattern,
+		// while the same fields are also exposed as structured pairs via the KeyValue API.
+		logger.atInfo()
+			.addKeyValue("url", url)
+			.addKeyValue("markdown", context.markdown())
+			.log("msg=\"fetching url\" url=\"{}\" markdown={}", url, context.markdown());
 		try {
 			return context.client()
 				.get()
