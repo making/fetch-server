@@ -22,6 +22,9 @@ import org.slf4j.LoggerFactory;
 import org.springframework.ai.mcp.annotation.McpTool;
 import org.springframework.ai.tool.annotation.ToolParam;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
+import org.springframework.boot.http.client.HttpClientSettings;
+import org.springframework.boot.http.client.InetAddressFilter;
 import org.springframework.core.task.AsyncTaskExecutor;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -49,6 +52,8 @@ public class WebFetchService {
 	private final FlexmarkHtmlConverter htmlToMarkdown = FlexmarkHtmlConverter
 		.builder(new MutableDataSet().set(FlexmarkHtmlConverter.SETEXT_HEADINGS, false))
 		.build();
+
+	private InetAddressFilter addressFilter = InetAddressFilter.externalAddresses().or("127.0.0.1");
 
 	public WebFetchService(RestClient.Builder builder, WebFetchProperties properties,
 			@Qualifier("applicationTaskExecutor") AsyncTaskExecutor taskExecutor) {
@@ -101,8 +106,10 @@ public class WebFetchService {
 	}
 
 	private FetchResult fetchOne(FetchContext context, String url) {
-		// Write the body itself in logfmt so it is visible with the default console pattern,
-		// while the same fields are also exposed as structured pairs via the KeyValue API.
+		// Write the body itself in logfmt so it is visible with the default console
+		// pattern,
+		// while the same fields are also exposed as structured pairs via the KeyValue
+		// API.
 		logger.atInfo()
 			.addKeyValue("url", url)
 			.addKeyValue("markdown", context.markdown())
@@ -138,10 +145,11 @@ public class WebFetchService {
 	}
 
 	private RestClient buildClient(Duration timeout) {
-		HttpClient httpClient = HttpClient.newBuilder().connectTimeout(timeout).build();
-		JdkClientHttpRequestFactory factory = new JdkClientHttpRequestFactory(httpClient);
-		factory.setReadTimeout(timeout);
-		return this.builder.clone().requestFactory(factory).build();
+		HttpClientSettings settings = HttpClientSettings.defaults()
+			.withReadTimeout(timeout)
+			.withConnectTimeout(timeout)
+			.withInetAddressFilter(this.addressFilter);
+		return this.builder.clone().requestFactory(ClientHttpRequestFactoryBuilder.detect().build(settings)).build();
 	}
 
 	private static FetchResult errorResult(String url, Throwable ex) {
