@@ -43,6 +43,7 @@ public class PlaygroundController {
 	@PostMapping("/playground")
 	public String run(@RequestParam(defaultValue = "") String urls,
 			@RequestParam(defaultValue = "false") boolean markdown, @RequestParam(defaultValue = "") String headers,
+			@RequestParam(required = false) @Nullable String encoding,
 			@RequestParam(required = false) @Nullable Integer timeoutSeconds,
 			@RequestParam(required = false) @Nullable Integer maxBytes, Model model) {
 		List<String> urlList = parseLines(urls);
@@ -53,7 +54,8 @@ public class PlaygroundController {
 
 		Map<String, String> headerMap = parseHeaders(headers);
 		WebFetchService.FetchResponse response = this.webFetchService.fetch(urlList, markdown,
-				headerMap.isEmpty() ? null : headerMap, timeoutSeconds, maxBytes);
+				headerMap.isEmpty() ? null : headerMap,
+				(encoding == null || encoding.isBlank()) ? null : encoding.strip(), timeoutSeconds, maxBytes);
 
 		List<ResultView> views = response.results().stream().map(PlaygroundController::toView).toList();
 		model.addAttribute("results", views);

@@ -80,7 +80,7 @@ class WebFetchServiceTest {
 		registerHandler("/big", textHandler(hundredBytes, StandardCharsets.UTF_8, 200));
 
 		WebFetchService.FetchResponse response = this.service.fetch(List.of(this.baseUrl + "/big"), false, null, null,
-				20);
+				null, 20);
 		WebFetchService.FetchResult result = response.results().get(0);
 
 		assertThat(result.truncated()).isTrue();
@@ -100,7 +100,7 @@ class WebFetchServiceTest {
 		});
 
 		WebFetchService.FetchResponse response = this.service.fetch(List.of(this.baseUrl + "/echo"), false,
-				Map.of("X-Test-Header", "abc123"), null, null);
+				Map.of("X-Test-Header", "abc123"), null, null, null);
 
 		assertThat(response.results().get(0).content()).isEqualToNormalizingWhitespace("""
 				abc123
@@ -124,8 +124,8 @@ class WebFetchServiceTest {
 			}
 		});
 
-		WebFetchService.FetchResponse response = this.service.fetch(List.of(this.baseUrl + "/slow"), false, null, 1,
-				null);
+		WebFetchService.FetchResponse response = this.service.fetch(List.of(this.baseUrl + "/slow"), false, null, null,
+				1, null);
 		WebFetchService.FetchResult result = response.results().get(0);
 
 		assertThat(result.status()).isZero();
@@ -153,6 +153,45 @@ class WebFetchServiceTest {
 	}
 
 	@Test
+	void shouldDecodeBodyUsingExplicitEncodingWhenContentTypeLacksCharset() {
+		registerHandler("/eucjp", exchange -> {
+			byte[] body = "こんにちは".getBytes(Charset.forName("EUC-JP"));
+			exchange.getResponseHeaders().set("Content-Type", "text/html");
+			exchange.sendResponseHeaders(200, body.length);
+			try (OutputStream out = exchange.getResponseBody()) {
+				out.write(body);
+			}
+		});
+
+		WebFetchService.FetchResponse response = this.service.fetch(List.of(this.baseUrl + "/eucjp"), false, null,
+				"EUC-JP", null, null);
+
+		assertThat(response.results().get(0).content()).isEqualToNormalizingWhitespace("""
+				こんにちは
+				""");
+	}
+
+	@Test
+	void shouldPreferExplicitEncodingOverContentTypeCharset() {
+		registerHandler("/override", exchange -> {
+			byte[] body = "こんにちは".getBytes(Charset.forName("EUC-JP"));
+			// Header claims UTF-8 but the body is actually EUC-JP.
+			exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=UTF-8");
+			exchange.sendResponseHeaders(200, body.length);
+			try (OutputStream out = exchange.getResponseBody()) {
+				out.write(body);
+			}
+		});
+
+		WebFetchService.FetchResponse response = this.service.fetch(List.of(this.baseUrl + "/override"), false, null,
+				"EUC-JP", null, null);
+
+		assertThat(response.results().get(0).content()).isEqualToNormalizingWhitespace("""
+				こんにちは
+				""");
+	}
+
+	@Test
 	void shouldConvertHtmlToMarkdownByDefault() {
 		registerHandler("/page", htmlHandler("""
 				<html>
@@ -165,7 +204,7 @@ class WebFetchServiceTest {
 				"""));
 
 		WebFetchService.FetchResponse response = this.service.fetch(List.of(this.baseUrl + "/page"), null, null, null,
-				null);
+				null, null);
 		WebFetchService.FetchResult result = response.results().get(0);
 
 		assertThat(result.status()).isEqualTo(200);
@@ -183,7 +222,7 @@ class WebFetchServiceTest {
 		registerHandler("/two", textHandler("second", StandardCharsets.UTF_8, 200));
 
 		WebFetchService.FetchResponse response = this.service
-			.fetch(List.of(this.baseUrl + "/one", this.baseUrl + "/two"), false, null, null, null);
+			.fetch(List.of(this.baseUrl + "/one", this.baseUrl + "/two"), false, null, null, null, null);
 
 		assertThat(response.results()).hasSize(2);
 		assertThat(response.results().get(0).url()).endsWith("/one");
@@ -202,7 +241,7 @@ class WebFetchServiceTest {
 		String unreachableUrl = reserveClosedPortUrl() + "/down";
 
 		WebFetchService.FetchResponse response = this.service.fetch(List.of(this.baseUrl + "/ok", unreachableUrl),
-				false, null, null, null);
+				false, null, null, null, null);
 
 		assertThat(response.results()).hasSize(2);
 		WebFetchService.FetchResult ok = response.results().get(0);
@@ -231,7 +270,7 @@ class WebFetchServiceTest {
 	}
 
 	private WebFetchService.FetchResult fetchOne(String url, boolean markdown) {
-		return this.service.fetch(List.of(url), markdown, null, null, null).results().get(0);
+		return this.service.fetch(List.of(url), markdown, null, null, null, null).results().get(0);
 	}
 
 	private void registerHandler(String path, HttpHandler handler) {

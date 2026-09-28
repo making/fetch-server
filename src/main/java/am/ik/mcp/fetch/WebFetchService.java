@@ -87,6 +87,8 @@ public class WebFetchService {
 					required = false) @Nullable Boolean markdown,
 			@ToolParam(description = "Optional HTTP request headers",
 					required = false) @Nullable Map<String, String> headers,
+			@ToolParam(description = "Optional response charset name overriding the Content-Type charset (default UTF-8), e.g. EUC-JP",
+					required = false) @Nullable String encoding,
 			@ToolParam(description = "Optional request timeout in seconds (default 30)",
 					required = false) @Nullable Integer timeoutSeconds,
 			@ToolParam(description = "Optional maximum body size in bytes per URL (default 1,000,000)",
@@ -96,7 +98,9 @@ public class WebFetchService {
 		int effectiveMaxBytes = (maxBytes != null) ? maxBytes
 				: Math.toIntExact(this.properties.defaultMaxSize().toBytes());
 		boolean asMarkdown = (markdown == null) || markdown;
-		FetchContext context = new FetchContext(buildClient(effectiveTimeout), asMarkdown, headers, effectiveMaxBytes);
+		Charset explicitCharset = resolveExplicitCharset(encoding);
+		FetchContext context = new FetchContext(buildClient(effectiveTimeout), asMarkdown, headers, effectiveMaxBytes,
+				explicitCharset);
 
 		// Submit every URL first so they run concurrently, then join in input order.
 		List<CompletableFuture<FetchResult>> futures = urls.stream()
@@ -126,7 +130,8 @@ public class WebFetchService {
 						boolean truncated = readBytes.length > context.maxBytes();
 						byte[] bodyBytes = truncated ? Arrays.copyOf(readBytes, context.maxBytes()) : readBytes;
 						String contentType = response.getHeaders().getFirst(HttpHeaders.CONTENT_TYPE);
-						String body = new String(bodyBytes, resolveCharset(contentType));
+						String body = new String(bodyBytes,
+								(context.charset() != null) ? context.charset() : resolveCharset(contentType));
 						int status = response.getStatusCode().value();
 						String resolvedContentType = (contentType != null) ? contentType : "";
 						if (context.markdown()) {
@@ -165,6 +170,18 @@ public class WebFetchService {
 		source.forEach(target::set);
 	}
 
+	private static @Nullable Charset resolveExplicitCharset(@Nullable String encoding) {
+		if (encoding == null || encoding.isBlank()) {
+			return null;
+		}
+		try {
+			return Charset.forName(encoding.trim());
+		}
+		catch (RuntimeException ex) {
+			return null;
+		}
+	}
+
 	private static Charset resolveCharset(@Nullable String contentType) {
 		if (contentType == null || contentType.isBlank()) {
 			return StandardCharsets.UTF_8;
@@ -180,7 +197,7 @@ public class WebFetchService {
 	}
 
 	private record FetchContext(RestClient client, boolean markdown, @Nullable Map<String, String> headers,
-			int maxBytes) {
+			int maxBytes, @Nullable Charset charset) {
 	}
 
 }
