@@ -171,6 +171,10 @@
                             <BP_OCI_REVISION>${env.GITHUB_SHA}</BP_OCI_REVISION>
                             <BP_JATTACH_ENABLED>true</BP_JATTACH_ENABLED>
                             <BP_SPRING_CLOUD_BINDINGS_DISABLED>true</BP_SPRING_CLOUD_BINDINGS_DISABLED>
+                            <!-- Native images embed only a minimal charset set by default;
+                                 without this, EUC-JP / Shift_JIS lookups fail at runtime.
+                            -->
+                            <BP_NATIVE_IMAGE_BUILD_ARGUMENTS>-H:+AddAllCharsets</BP_NATIVE_IMAGE_BUILD_ARGUMENTS>
                         </env>
                     </image>
                 </configuration>
