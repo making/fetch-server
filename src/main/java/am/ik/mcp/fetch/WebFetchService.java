@@ -84,7 +84,7 @@ public class WebFetchService {
 	@McpTool(name = "fetch",
 			description = "Fetch one or more URLs via HTTP GET, optionally converting HTML and PDF bodies to Markdown")
 	public FetchResponse fetch(@ToolParam(description = "Target URLs to fetch") List<String> urls,
-			@ToolParam(description = "Convert HTML body to Markdown (default true)",
+			@ToolParam(description = "Convert HTML / PDF body to Markdown (default true)",
 					required = false) @Nullable Boolean markdown,
 			@ToolParam(description = "Optional HTTP request headers",
 					required = false) @Nullable Map<String, String> headers,
@@ -93,7 +93,7 @@ public class WebFetchService {
 					required = false) @Nullable String encoding,
 			@ToolParam(description = "Optional request timeout in seconds (default 30)",
 					required = false) @Nullable Integer timeoutSeconds,
-			@ToolParam(description = "Optional maximum body size in bytes per URL (default 1,000,000)",
+			@ToolParam(description = "Optional maximum body size in bytes per URL (default 10,485,760)",
 					required = false) @Nullable Integer maxBytes) {
 		Duration effectiveTimeout = (timeoutSeconds != null) ? Duration.ofSeconds(timeoutSeconds)
 				: this.properties.defaultTimeout();
