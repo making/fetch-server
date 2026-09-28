@@ -207,7 +207,8 @@ label .hint {
 }
 
 textarea,
-input[type="number"] {
+input[type="number"],
+input[type="text"] {
 	width: 100%;
 	padding: 11px 13px;
 	font-family: var(--mono);
