@@ -5,7 +5,7 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>4.1.0</version>
+        <version>4.1.1</version>
         <relativePath/> <!-- lookup parent from repository -->
     </parent>
     <groupId>am.ik.mcp</groupId>
@@ -28,7 +28,8 @@
     </scm>
     <properties>
         <java.version>25</java.version>
-        <spring-ai.version>2.0.0</spring-ai.version>
+        <spring-ai.version>2.0.1</spring-ai.version>
+        <opentelemetry.version>1.66.0</opentelemetry.version>
     </properties>
     <dependencies>
         <dependency>
@@ -74,12 +75,12 @@
         <dependency>
             <groupId>am.ik.spring.opentelemetry</groupId>
             <artifactId>otel-logs-autoconfigure-logback</artifactId>
-            <version>0.6.0</version>
+            <version>0.7.0</version>
         </dependency>
         <dependency>
             <groupId>org.jsoup</groupId>
             <artifactId>jsoup</artifactId>
-            <version>1.18.3</version>
+            <version>1.23.2</version>
         </dependency>
         <dependency>
             <groupId>com.vladsch.flexmark</groupId>
@@ -169,12 +170,12 @@
             <plugin>
                 <groupId>io.spring.javaformat</groupId>
                 <artifactId>spring-javaformat-maven-plugin</artifactId>
-                <version>0.0.47</version>
+                <version>0.0.48</version>
             </plugin>
             <plugin>
                 <groupId>am.ik.maven</groupId>
                 <artifactId>nullability-maven-plugin</artifactId>
-                <version>0.4.0</version>
+                <version>0.5.1</version>
                 <extensions>true</extensions>
                 <executions>
                     <execution>
