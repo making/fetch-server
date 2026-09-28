@@ -12,5 +12,5 @@ import org.springframework.util.unit.DataSize;
  */
 @ConfigurationProperties(prefix = "fetch")
 public record WebFetchProperties(@DefaultValue("30s") Duration defaultTimeout,
-		@DefaultValue("1MB") DataSize defaultMaxSize) {
+		@DefaultValue("10MB") DataSize defaultMaxSize) {
 }
