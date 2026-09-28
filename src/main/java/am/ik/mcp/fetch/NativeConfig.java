@@ -78,6 +78,10 @@ public class NativeConfig {
 			// Mustache templates are loaded as classpath resources at runtime.
 			hints.resources().registerPattern("templates/*.mustache");
 			hints.resources().registerPattern("templates/fragments/*.mustache");
+			// PDFBox glyph metrics / glyph lists are looked up as classpath resources
+			// at runtime when resolving standard 14 fonts.
+			hints.resources().registerPattern("org/apache/pdfbox/resources/afm/*");
+			hints.resources().registerPattern("org/apache/pdfbox/resources/glyphlist/*");
 			for (String type : FLEXMARK_ENUMS) {
 				hints.reflection()
 					.registerType(TypeReference.of(type), MemberCategory.ACCESS_PUBLIC_FIELDS,

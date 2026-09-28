@@ -1,5 +1,6 @@
 package am.ik.mcp.fetch;
 
+import java.io.ByteArrayInputStream;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.http.HttpClient;
@@ -81,13 +82,14 @@ public class WebFetchService {
 	}
 
 	@McpTool(name = "fetch",
-			description = "Fetch one or more URLs via HTTP GET, optionally converting HTML bodies to Markdown")
+			description = "Fetch one or more URLs via HTTP GET, optionally converting HTML and PDF bodies to Markdown")
 	public FetchResponse fetch(@ToolParam(description = "Target URLs to fetch") List<String> urls,
 			@ToolParam(description = "Convert HTML body to Markdown (default true)",
 					required = false) @Nullable Boolean markdown,
 			@ToolParam(description = "Optional HTTP request headers",
 					required = false) @Nullable Map<String, String> headers,
-			@ToolParam(description = "Optional response charset name overriding the Content-Type charset (default UTF-8), e.g. EUC-JP",
+			@ToolParam(
+					description = "Optional response charset name overriding the Content-Type charset (default UTF-8), e.g. EUC-JP",
 					required = false) @Nullable String encoding,
 			@ToolParam(description = "Optional request timeout in seconds (default 30)",
 					required = false) @Nullable Integer timeoutSeconds,
@@ -130,10 +132,16 @@ public class WebFetchService {
 						boolean truncated = readBytes.length > context.maxBytes();
 						byte[] bodyBytes = truncated ? Arrays.copyOf(readBytes, context.maxBytes()) : readBytes;
 						String contentType = response.getHeaders().getFirst(HttpHeaders.CONTENT_TYPE);
-						String body = new String(bodyBytes,
-								(context.charset() != null) ? context.charset() : resolveCharset(contentType));
 						int status = response.getStatusCode().value();
 						String resolvedContentType = (contentType != null) ? contentType : "";
+						if (context.markdown() && isPdf(resolvedContentType)) {
+							PdfToMarkdownConverter.Result pdf = PdfToMarkdownConverter
+								.convert(new ByteArrayInputStream(bodyBytes));
+							return new FetchResult(url, status, resolvedContentType, pdf.title(), pdf.markdown(),
+									truncated, null);
+						}
+						String body = new String(bodyBytes,
+								(context.charset() != null) ? context.charset() : resolveCharset(contentType));
 						if (context.markdown()) {
 							Document doc = Jsoup.parse(body, url);
 							String rendered = this.htmlToMarkdown.convert(body);
@@ -161,6 +169,18 @@ public class WebFetchService {
 		String message = ex.getMessage();
 		String error = (message != null && !message.isBlank()) ? message : ex.getClass().getSimpleName();
 		return new FetchResult(url, 0, "", null, "", false, error);
+	}
+
+	private static boolean isPdf(@Nullable String contentType) {
+		if (contentType == null || contentType.isBlank()) {
+			return false;
+		}
+		try {
+			return MediaType.parseMediaType(contentType).isCompatibleWith(MediaType.APPLICATION_PDF);
+		}
+		catch (RuntimeException ex) {
+			return false;
+		}
 	}
 
 	private static void applyHeaders(HttpHeaders target, @Nullable Map<String, String> source) {

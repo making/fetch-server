@@ -2,6 +2,7 @@ package am.ik.mcp.fetch;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetAddress;
@@ -14,6 +15,11 @@ import java.util.List;
 import java.util.Map;
 
 import com.sun.net.httpserver.HttpHandler;
+import org.apache.pdfbox.pdmodel.PDDocument;
+import org.apache.pdfbox.pdmodel.PDPage;
+import org.apache.pdfbox.pdmodel.PDPageContentStream;
+import org.apache.pdfbox.pdmodel.font.PDType1Font;
+import org.apache.pdfbox.pdmodel.font.Standard14Fonts;
 import com.sun.net.httpserver.HttpServer;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -217,6 +223,36 @@ class WebFetchServiceTest {
 	}
 
 	@Test
+	void shouldConvertPdfToMarkdownByDefault() throws IOException {
+		byte[] pdf;
+		try (PDDocument document = new PDDocument()) {
+			PDPage page = new PDPage();
+			document.addPage(page);
+			document.getDocumentInformation().setTitle("Doc Title");
+			try (PDPageContentStream content = new PDPageContentStream(document, page)) {
+				content.beginText();
+				content.setFont(new PDType1Font(Standard14Fonts.FontName.HELVETICA), 12);
+				content.newLineAtOffset(50, 700);
+				content.showText("pdf body");
+				content.endText();
+			}
+			ByteArrayOutputStream out = new ByteArrayOutputStream();
+			document.save(out);
+			pdf = out.toByteArray();
+		}
+		registerHandler("/doc.pdf", pdfHandler(pdf));
+
+		WebFetchService.FetchResponse response = this.service.fetch(List.of(this.baseUrl + "/doc.pdf"), null, null,
+				null, null, null);
+		WebFetchService.FetchResult result = response.results().get(0);
+
+		assertThat(result.status()).isEqualTo(200);
+		assertThat(result.contentType()).isEqualTo("application/pdf");
+		assertThat(result.title()).isEqualTo("Doc Title");
+		assertThat(result.content()).contains("pdf body");
+	}
+
+	@Test
 	void shouldFetchMultipleUrlsPreservingOrder() {
 		registerHandler("/one", textHandler("first", StandardCharsets.UTF_8, 200));
 		registerHandler("/two", textHandler("second", StandardCharsets.UTF_8, 200));
@@ -283,6 +319,16 @@ class WebFetchServiceTest {
 		try (ServerSocket socket = new ServerSocket(0, 0, InetAddress.getLoopbackAddress())) {
 			return "http://127.0.0.1:" + socket.getLocalPort();
 		}
+	}
+
+	private static HttpHandler pdfHandler(byte[] pdf) {
+		return exchange -> {
+			exchange.getResponseHeaders().set("Content-Type", "application/pdf");
+			exchange.sendResponseHeaders(200, pdf.length);
+			try (OutputStream out = exchange.getResponseBody()) {
+				out.write(pdf);
+			}
+		};
 	}
 
 	private static HttpHandler textHandler(String body, Charset charset, int status) {
