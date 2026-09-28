@@ -136,6 +136,14 @@
             <plugin>
                 <groupId>org.graalvm.buildtools</groupId>
                 <artifactId>native-maven-plugin</artifactId>
+                <configuration>
+                    <!-- Native images embed only a minimal charset set by default; without
+                         this, EUC-JP / Shift_JIS lookups fail at runtime and fall back to
+                         UTF-8, garbling legacy pages. -->
+                    <buildArgs>
+                        <buildArg>-H:+AddAllCharsets</buildArg>
+                    </buildArgs>
+                </configuration>
             </plugin>
             <plugin>
                 <groupId>org.springframework.boot</groupId>
