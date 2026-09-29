@@ -162,7 +162,13 @@ public class WebFetchService {
 			.withReadTimeout(timeout)
 			.withConnectTimeout(timeout)
 			.withInetAddressFilter(this.addressFilter);
-		return this.builder.clone().requestFactory(ClientHttpRequestFactoryBuilder.detect().build(settings)).build();
+		// Default User-Agent follows the Wikimedia User-Agent policy: an identifiable
+		// product name/version plus a contact URL. A caller-supplied User-Agent header
+		// overrides it at request time.
+		return this.builder.clone()
+			.defaultHeader(HttpHeaders.USER_AGENT, this.properties.userAgent())
+			.requestFactory(ClientHttpRequestFactoryBuilder.detect().build(settings))
+			.build();
 	}
 
 	private static FetchResult errorResult(String url, Throwable ex) {

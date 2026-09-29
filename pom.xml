@@ -30,6 +30,8 @@
         <java.version>25</java.version>
         <spring-ai.version>2.0.1</spring-ai.version>
         <opentelemetry.version>1.66.0</opentelemetry.version>
+        <!-- Fallback when the git-commit-id plugin is skipped (e.g. no .git directory) -->
+        <git.commit.id.abbrev>unknown</git.commit.id.abbrev>
     </properties>
     <dependencies>
         <dependency>
@@ -117,6 +119,26 @@
 
     <build>
         <plugins>
+            <plugin>
+                <groupId>io.github.git-commit-id</groupId>
+                <artifactId>git-commit-id-maven-plugin</artifactId>
+                <version>10.0.1</version>
+                <executions>
+                    <execution>
+                        <id>get-the-git-infos</id>
+                        <goals>
+                            <goal>revision</goal>
+                        </goals>
+                        <phase>initialize</phase>
+                        <configuration>
+                            <!-- Expose git.commit.id.* as Maven properties for resource filtering -->
+                            <injectAllReactorProjects>true</injectAllReactorProjects>
+                            <failOnNoGitDirectory>false</failOnNoGitDirectory>
+                            <generateGitPropertiesFile>false</generateGitPropertiesFile>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>

@@ -45,7 +45,8 @@ class WebFetchServiceTest {
 		SimpleAsyncTaskExecutor executor = new SimpleAsyncTaskExecutor();
 		executor.setVirtualThreads(true);
 		this.service = new WebFetchService(RestClient.builder(),
-				new WebFetchProperties(Duration.ofSeconds(30), DataSize.ofMegabytes(1)), executor);
+				new WebFetchProperties("test-agent/1.0 (+http://example.test)", Duration.ofSeconds(30),
+						DataSize.ofMegabytes(1)), executor);
 	}
 
 	@AfterEach
@@ -290,6 +291,44 @@ class WebFetchServiceTest {
 		assertThat(failed.url()).isEqualTo(unreachableUrl);
 		assertThat(failed.status()).isZero();
 		assertThat(failed.error()).isNotNull();
+	}
+
+	@Test
+	void shouldSendDefaultUserAgentFollowingWikimediaPolicy() {
+		registerHandler("/agent", exchange -> {
+			String agent = exchange.getRequestHeaders().getFirst("User-Agent");
+			byte[] body = (agent != null ? agent : "").getBytes(StandardCharsets.UTF_8);
+			exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=UTF-8");
+			exchange.sendResponseHeaders(200, body.length);
+			try (OutputStream out = exchange.getResponseBody()) {
+				out.write(body);
+			}
+		});
+
+		WebFetchService.FetchResult result = fetchOne(this.baseUrl + "/agent", false);
+
+		// Wikimedia policy: tool name/version plus contact info.
+		assertThat(result.content()).isEqualToNormalizingWhitespace("test-agent/1.0 (+http://example.test)");
+	}
+
+	@Test
+	void shouldOverrideDefaultUserAgentWithRequestHeader() {
+		registerHandler("/agent-override", exchange -> {
+			String agent = exchange.getRequestHeaders().getFirst("User-Agent");
+			byte[] body = (agent != null ? agent : "").getBytes(StandardCharsets.UTF_8);
+			exchange.getResponseHeaders().set("Content-Type", "text/plain; charset=UTF-8");
+			exchange.sendResponseHeaders(200, body.length);
+			try (OutputStream out = exchange.getResponseBody()) {
+				out.write(body);
+			}
+		});
+
+		WebFetchService.FetchResponse response = this.service.fetch(List.of(this.baseUrl + "/agent-override"), false,
+				Map.of("User-Agent", "custom-agent/9.9"), null, null, null);
+
+		assertThat(response.results().get(0).content()).isEqualToNormalizingWhitespace("""
+				custom-agent/9.9
+				""");
 	}
 
 	@Test
